@@ -1,357 +1,42 @@
 <index.html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>One Click Chain Reaction</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EarthB Game</title>
   <style>
-    html, body { margin:0; height:100%; background:#070b18; color:#eaf2ff; font-family: system-ui, Arial, sans-serif; overflow:hidden; }
-    canvas { display:block; width:100vw; height:100vh; }
-    #hud {
-      position: fixed; top:10px; left:10px; z-index:2; padding:10px 12px; border-radius:10px;
-      background: rgba(8,12,28,0.55); border:1px solid rgba(255,255,255,0.08); backdrop-filter: blur(4px);
-      font-size:13px; line-height:1.35; user-select:none; display:none;
+    body {
+      margin: 0;
+      background: #000;
+      color: #0f0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      height: 100vh;
     }
-    #hud .row { margin-top:2px; }
-    #overlay {
-      position: fixed; inset: 0; display:grid; place-items:center; text-align:center;
-      background: rgba(3,5,12,0.72); color:#eaf2ff; z-index:3; gap:14px; padding:20px;
+    header {
+      padding: 10px;
+      font-size: 1.5em;
+      background: #111;
+      width: 100%;
+      text-align: center;
+      border-bottom: 2px solid #0f0;
     }
-    #overlay h1 { margin:0; font-size:28px; letter-spacing:0.4px; }
-    #overlay .tip { opacity:0.9; font-weight:500; }
-    .btn {
-      font-size:18px; padding:12px 22px; border-radius:10px; border:none; cursor:pointer; font-weight:700;
-      background:#71d4ff; color:#052032; box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+    canvas {
+      background: #111;
+      border: 2px solid #0f0;
+      display: block;
+      margin-top: 15px;
     }
-    .key { padding:0 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.08); }
   </style>
 </head>
 <body>
-  <div id="hud">
-    <div><strong>One Click Chain Reaction</strong></div>
-    <div class="row">Click or tap once to start the chain. Try to pop as many orbs as possible.</div>
-    <div id="stats" class="row">Score: 0 • Best: 0</div>
-  </div>
+  <header>🌏 EarthB Game</header>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
 
-  <div id="overlay">
-    <div>
-      <h1>One Click Chain Reaction</h1>
-      <div class="tip">Click <span class="key">Start</span>, then click anywhere once to begin the cascade.</div>
-    </div>
-    <button id="startBtn" class="btn">▶ Start</button>
-  </div>
-
-  <canvas id="game" aria-label="One Click Chain Reaction game"></canvas>
-
-  <script>
-  (function () {
-    // DOM
-    const canvas = document.getElementById('game');
-    const ctx = canvas.getContext('2d');
-    const overlay = document.getElementById('overlay');
-    const startBtn = document.getElementById('startBtn');
-    const hud = document.getElementById('hud');
-    const statsEl = document.getElementById('stats');
-
-    // DPI-aware sizing
-    let W=0, H=0, DPR=1;
-    function resize() {
-      DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-      W = Math.floor(window.innerWidth);
-      H = Math.floor(window.innerHeight);
-      canvas.width = Math.floor(W * DPR);
-      canvas.height = Math.floor(H * DPR);
-      canvas.style.width = W + 'px';
-      canvas.style.height = H + 'px';
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      initBackground();
-    }
-    window.addEventListener('resize', resize, { passive: true });
-
-    // Helpers
-    const rr = (a,b) => a + Math.random()*(b-a);
-    const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
-
-    // World state
-    const world = {
-      running: false,
-      clicked: false, // whether the player has used their one click
-      score: 0,
-      best: Number(localStorage.getItem('oneclick_best') || '0'),
-      time: 0
-    };
-
-    // Entities
-    const orbs = [];        // moving circles to pop
-    const booms = [];       // active explosions
-    const sparkles = [];    // bg stars
-    const trails = [];      // orb trails for polish
-
-    // Background sparkles
-    function initBackground() {
-      sparkles.length = 0;
-      const n = Math.min(160, Math.floor(W*H/20000));
-      for (let i=0;i<n;i++){
-        sparkles.push({x: Math.random()*W, y: Math.random()*H, r: rr(0.4,1.4), t: Math.random()*Math.PI*2, s: rr(0.04,0.18)});
-      }
-    }
-
-    // Create orbs
-    function resetOrbs() {
-      orbs.length = 0;
-      const count = Math.round(clamp(W*H/35000, 18, 40)); // scale with screen
-      for (let i=0;i<count;i++){
-        const r = rr(7, 12);
-        const speed = rr(60, 140);
-        const angle = rr(0, Math.PI*2);
-        const c = pickColor();
-        orbs.push({
-          x: rr(r+6, W-(r+6)),
-          y: rr(r+6, H-(r+6)),
-          vx: Math.cos(angle)*speed,
-          vy: Math.sin(angle)*speed,
-          r, color: c, hit:false, tw: rr(0, 2*Math.PI)
-        });
-      }
-    }
-
-    function pickColor(){
-      const palette = ['#7ee0ff','#8cffb2','#ffd479','#ff9aa2','#c9b6ff','#ffea7a'];
-      return palette[Math.floor(Math.random()*palette.length)];
-    }
-
-    // Input
-    let clickPos = {x:0,y:0};
-    function getCanvasPos(clientX, clientY){
-      const rect = canvas.getBoundingClientRect();
-      return { x: clientX - rect.left, y: clientY - rect.top };
-    }
-    function handleClick(x,y){
-      if (!world.running) return;
-      if (world.clicked) return;
-      world.clicked = true;
-      clickPos = {x,y};
-      spawnBoom(x,y);
-    }
-
-    canvas.addEventListener('mousedown', e => {
-      const p = getCanvasPos(e.clientX, e.clientY);
-      handleClick(p.x, p.y);
-    });
-    canvas.addEventListener('touchstart', e => {
-      const t = e.changedTouches[0];
-      const p = getCanvasPos(t.clientX, t.clientY);
-      handleClick(p.x, p.y);
-    }, { passive: true });
-
-    startBtn.addEventListener('click', () => {
-      overlay.style.display = 'none';
-      hud.style.display = 'block';
-      startGame();
-    });
-
-    // Game control
-    function startGame(){
-      world.running = true;
-      world.clicked = false;
-      world.score = 0;
-      world.time = 0;
-      booms.length = 0;
-      trails.length = 0;
-      resetOrbs();
-      last = performance.now();
-    }
-
-    function endRoundIfDone(){
-      if (!world.running) return;
-      if (!world.clicked) return;      // not used the click yet
-      if (booms.length > 0) return;    // still popping
-      // no more booms; finish
-      world.running = false;
-      world.best = Math.max(world.best, world.score);
-      localStorage.setItem('oneclick_best', String(world.best));
-      showOverlayAfterRound();
-    }
-
-    function showOverlayAfterRound(){
-      overlay.innerHTML = '';
-      const box = document.createElement('div');
-      box.style.textAlign = 'center';
-      const h1 = document.createElement('h1');
-      h1.textContent = 'Round Complete';
-      const p = document.createElement('div');
-      p.className = 'tip';
-      p.textContent = `Score: ${world.score} • Best: ${world.best}`;
-      const btn = document.createElement('button');
-      btn.className = 'btn';
-      btn.textContent = '▶ Play Again';
-      btn.addEventListener('click', () => {
-        overlay.style.display = 'none';
-        startGame();
-      });
-      box.appendChild(h1); box.appendChild(p);
-      overlay.appendChild(box);
-      overlay.appendChild(btn);
-      overlay.style.display = 'grid';
-    }
-
-    // Explosions
-    function spawnBoom(x,y){
-      booms.push({ x, y, r: 0, max: rr(54, 74), grow: rr(130, 170), shrink: rr(100, 140), phase: 'grow' });
-    }
-
-    // Update
-    function update(dt){
-      world.time += dt;
-      // Stats
-      statsEl.textContent = `Score: ${world.score} • Best: ${world.best}`;
-
-      // Background sparkles
-      for (const s of sparkles){
-        s.t += s.s * 0.08;
-      }
-
-      // Orbs move and bounce
-      for (const o of orbs){
-        const fr = 0.000; // friction
-        o.vx *= (1 - fr); o.vy *= (1 - fr);
-        o.x += o.vx * dt; o.y += o.vy * dt;
-        if (o.x < o.r) { o.x = o.r; o.vx *= -1; }
-        if (o.x > W - o.r) { o.x = W - o.r; o.vx *= -1; }
-        if (o.y < o.r) { o.y = o.r; o.vy *= -1; }
-        if (o.y > H - o.r) { o.y = H - o.r; o.vy *= -1; }
-        o.tw += dt * 4;
-        // trails
-        if (Math.random() < 0.5) {
-          trails.push({ x:o.x, y:o.y, r:o.r*0.5, a:0.25, color:o.color, life: rr(0.3, 0.6) });
-        }
-      }
-
-      // Explosions grow then shrink
-      for (let i=booms.length-1; i>=0; i--){
-        const b = booms[i];
-        if (b.phase === 'grow'){
-          b.r += b.grow * dt;
-          if (b.r >= b.max){ b.r = b.max; b.phase = 'hold'; b.hold = rr(0.25, 0.45); }
-        } else if (b.phase === 'hold'){
-          b.hold -= dt;
-          if (b.hold <= 0) b.phase = 'shrink';
-        } else {
-          b.r -= b.shrink * dt;
-          if (b.r <= 0) { booms.splice(i,1); continue; }
-        }
-      }
-
-      // Orb vs explosion collisions
-      for (let i=orbs.length-1; i>=0; i--){
-        const o = orbs[i];
-        if (o.hit) continue;
-        for (const b of booms){
-          const dx = o.x - b.x, dy = o.y - b.y;
-          if (dx*dx + dy*dy <= (o.r + b.r)*(o.r + b.r)){
-            o.hit = true;
-            world.score += 1;
-            spawnBoom(o.x, o.y);
-            // knockback sparks
-            for (let s=0; s<6; s++){
-              trails.push({ x:o.x, y:o.y, r: rr(2,3), a:0.8, color:o.color, life: rr(0.25, 0.6), vx: rr(-80,80), vy: rr(-80,80) });
-            }
-            break;
-          }
-        }
-      }
-
-      // Decay trails
-      for (let i=trails.length-1; i>=0; i--){
-        const t = trails[i];
-        t.life -= dt;
-        if (t.vx || t.vy){ t.x += (t.vx||0)*dt; t.y += (t.vy||0)*dt; }
-        t.a = clamp(t.life*1.6, 0, 0.8);
-        if (t.life <= 0) trails.splice(i,1);
-      }
-
-      // If we've clicked and all booms are gone, end
-      endRoundIfDone();
-    }
-
-    // Draw
-    function draw(){
-      // Background gradient
-      const g = ctx.createLinearGradient(0, 0, 0, H);
-      g.addColorStop(0, '#0a1534');
-      g.addColorStop(0.6, '#0b1a44');
-      g.addColorStop(1, '#0d2054');
-      ctx.fillStyle = g;
-      ctx.fillRect(0,0,W,H);
-
-      // Sparkles
-      for (const s of sparkles){
-        const a = 0.25 + (Math.sin(s.t)+1)*0.35;
-        ctx.globalAlpha = a;
-        ctx.fillStyle = '#cfe3ff';
-        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-
-      // Trails
-      for (const t of trails){
-        ctx.globalAlpha = t.a;
-        ctx.fillStyle = t.color;
-        ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI*2); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-
-      // Orbs
-      for (const o of orbs){
-        if (o.hit) continue;
-        // glow
-        ctx.shadowColor = o.color; ctx.shadowBlur = 12;
-        ctx.fillStyle = o.color;
-        ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI*2); ctx.fill();
-        ctx.shadowBlur = 0;
-        // subtle shine
-        ctx.globalAlpha = 0.35;
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath(); ctx.arc(o.x - o.r*0.4, o.y - o.r*0.4, o.r*0.35, 0, Math.PI*2); ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-
-      // Explosions
-      for (const b of booms){
-        const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
-        grad.addColorStop(0, 'rgba(255,255,255,0.95)');
-        grad.addColorStop(0.4, 'rgba(255,230,170,0.55)');
-        grad.addColorStop(1, 'rgba(255,200,120,0.05)');
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill();
-        // ring
-        ctx.strokeStyle = 'rgba(255,220,160,0.5)'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.stroke();
-      }
-
-      // UI hint
-      if (world.running && !world.clicked){
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.font = '600 14px system-ui, Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('Click once to start the chain', W/2, 30);
-      }
-    }
-
-    // Loop
-    let last = performance.now();
-    function loop(ts){
-      const dt = Math.min(0.033, (ts - last)/1000);
-      last = ts;
-      if (world.running) update(dt);
-      draw();
-      requestAnimationFrame(loop);
-    }
-
-    // Init
-    resize();
-    requestAnimationFrame(loop);
-  })();
-  </script>
+  <!-- Link to your actual game logic -->
+  <script src="earthb.js"></script>
 </body>
 </html>
